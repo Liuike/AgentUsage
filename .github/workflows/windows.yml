@@ -1,0 +1,37 @@
+name: Windows
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build native Windows app
+        shell: pwsh
+        run: .\Scripts\package-windows.ps1
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: AgentUsage-Windows
+          path: |
+            dist/AgentUsage-Windows-*.zip
+            dist/AgentUsage-Windows-*.zip.sha256
+      - name: Publish Windows release assets
+        if: github.event_name == 'release'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          $assets = Get-ChildItem .\dist\AgentUsage-Windows-*.zip* | ForEach-Object FullName
+          gh release upload $env:RELEASE_TAG $assets --clobber
