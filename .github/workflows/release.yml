@@ -9,7 +9,34 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  windows-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate tag version
+        shell: pwsh
+        run: |
+          $source = Get-Content -Raw .\Windows\AgentUsageForm.cs
+          if ($source -notmatch 'public const string Version = "([^"]+)"') { throw 'Windows version not found.' }
+          if ($Matches[1] -ne $env:GITHUB_REF_NAME.TrimStart('v')) { throw 'Tag does not match Windows version.' }
+          if (-not (Test-Path -LiteralPath ".\Docs\releases\$env:GITHUB_REF_NAME.md")) { throw 'Release notes not found.' }
+
+      - name: Build and package Windows release
+        shell: pwsh
+        run: .\Scripts\package-windows.ps1
+
+      - name: Publish Windows release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $assets = Get-ChildItem .\dist\AgentUsage-Windows-*.zip* | ForEach-Object FullName
+          gh release create $env:GITHUB_REF_NAME $assets --verify-tag --notes-file ".\Docs\releases\$env:GITHUB_REF_NAME.md" --title "AgentUsage $env:GITHUB_REF_NAME"
+
+  macos-release:
+    needs: windows-release
+    continue-on-error: true
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v6
@@ -142,19 +169,20 @@ jobs:
           )
           cp Scripts/install.sh dist/install.sh
 
-      - name: Publish GitHub release
+      - name: Attach macOS release assets
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release create "$GITHUB_REF_NAME" \
+          gh release upload "$GITHUB_REF_NAME" \
             dist/AgentUsage-macos-universal.zip \
             dist/AgentUsage-macos-universal.zip.sha256 \
             dist/AgentUsage-macos-universal.dmg \
             dist/AgentUsage-macos-universal.dmg.sha256 \
             dist/appcast.xml \
             dist/install.sh \
-            --verify-tag \
+            --clobber
+          gh release edit "$GITHUB_REF_NAME" \
             --notes-file "Docs/releases/$GITHUB_REF_NAME.md" \
             --title "AgentUsage $GITHUB_REF_NAME"
 

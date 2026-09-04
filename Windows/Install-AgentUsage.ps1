@@ -11,6 +11,12 @@ if (-not (Test-Path -LiteralPath $executable) -or -not (Test-Path -LiteralPath $
 
 $installRoot = Join-Path $env:LOCALAPPDATA "Programs\AgentUsage"
 New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
+
+# Windows locks a running executable. Stop only AgentUsage processes before
+# replacing the installed copy, then relaunch the updated build below.
+Get-Process -Name "AgentUsage" -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Milliseconds 250
+
 Copy-Item -LiteralPath $executable -Destination $installRoot -Force
 Copy-Item -LiteralPath $configuration -Destination $installRoot -Force
 

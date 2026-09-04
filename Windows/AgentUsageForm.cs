@@ -15,7 +15,7 @@ namespace AgentUsage.Windows
 {
     internal sealed class AgentUsageForm : Form
     {
-        public const string Version = "0.5.0";
+        public const string Version = "0.5.1";
         private const int CanvasWidth = 360;
         private const int CollapsedHeight = 418;
         private const int ExpandedHeight = 638;

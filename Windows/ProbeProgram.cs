@@ -9,6 +9,13 @@ namespace AgentUsage.Windows
         public static int Main(string[] args)
         {
             if (Array.IndexOf(args, "--self-test") >= 0) return SelfTest();
+            if (Array.IndexOf(args, "--locate") >= 0)
+            {
+                string located = CodexClient.FindCodex();
+                if (located == null) { Console.Error.WriteLine("Codex not found"); return 1; }
+                Console.WriteLine(located);
+                return 0;
+            }
             try
             {
                 UsageSnapshot snapshot = new CodexClient().FetchAsync().Result;

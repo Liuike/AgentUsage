@@ -10,8 +10,8 @@ using System.Windows.Forms;
 [assembly: AssemblyProduct("AgentUsage for Windows")]
 [assembly: AssemblyDescription("Codex usage in the Windows notification area")]
 [assembly: AssemblyCompany("AgentUsage")]
-[assembly: AssemblyVersion("0.5.0.0")]
-[assembly: AssemblyFileVersion("0.5.0.0")]
+[assembly: AssemblyVersion("0.5.1.0")]
+[assembly: AssemblyFileVersion("0.5.1.0")]
 [assembly: ComVisible(false)]
 
 namespace AgentUsage.Windows

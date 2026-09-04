@@ -8,6 +8,8 @@ The Windows edition is a native notification-area app that preserves the Codex p
 - .NET Framework 4.7.2 or newer (included with supported Windows versions)
 - Codex CLI installed, available on `PATH`, and signed in
 
+Codex installed by the Codex Desktop app is discovered automatically in its versioned `%LOCALAPPDATA%\OpenAI\Codex\bin` directory, even when Explorer does not include that directory on `PATH`. For custom installations, set `AGENTUSAGE_CODEX_PATH` to the full path of `codex.exe` or `codex.cmd`.
+
 ## Build and run
 
 From PowerShell at the repository root:

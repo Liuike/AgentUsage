@@ -8,6 +8,7 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
+using Microsoft.Win32;
 
 namespace AgentUsage.Windows
 {
@@ -23,7 +24,7 @@ namespace AgentUsage.Windows
         private UsageSnapshot Fetch()
         {
             string binary = FindCodex();
-            if (binary == null) throw new InvalidOperationException("`codex` was not found on PATH. Install Codex and sign in first.");
+            if (binary == null) throw new InvalidOperationException("Codex was not found. AgentUsage checked PATH, Codex Desktop, npm/NVM, and Windows App Paths. Set AGENTUSAGE_CODEX_PATH if Codex is installed elsewhere.");
             try { return FetchOnce(binary); }
             catch (TimeoutException)
             {
@@ -189,21 +190,88 @@ namespace AgentUsage.Windows
             catch { }
         }
 
-        private static string FindCodex()
+        internal static string FindCodex()
         {
             var candidates = new List<string>();
-            string path = Environment.GetEnvironmentVariable("PATH") ?? "";
+            string configured = Environment.GetEnvironmentVariable("AGENTUSAGE_CODEX_PATH");
+            if (!string.IsNullOrEmpty(configured)) candidates.Add(configured.Trim('"'));
+
+            AddPathCandidates(candidates, Environment.GetEnvironmentVariable("PATH"));
+            try { AddPathCandidates(candidates, Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.User)); }
+            catch { }
+            try { AddPathCandidates(candidates, Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.Machine)); }
+            catch { }
+
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            candidates.Add(Path.Combine(appData, "npm", "codex.cmd"));
+            candidates.Add(Path.Combine(localAppData, "npm", "codex.cmd"));
+            candidates.Add(Path.Combine(profile, ".local", "bin", "codex.exe"));
+
+            AddVersionedCandidates(candidates, Path.Combine(localAppData, "OpenAI", "Codex", "bin"), "codex.exe");
+            AddVersionedCandidates(candidates, Path.Combine(localAppData, "nvm"), "codex.cmd");
+            AddVersionedCandidates(candidates, Path.Combine(appData, "nvm"), "codex.cmd");
+            candidates.Add(Path.Combine(localAppData, "Programs", "Codex", "codex.exe"));
+            candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "OpenAI", "Codex", "codex.exe"));
+            candidates.Add(Path.Combine(profile, ".codex", ".sandbox-bin", "codex.exe"));
+
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\App Paths\codex.exe"))
+                {
+                    if (key != null && key.GetValue(null) != null) candidates.Add(Convert.ToString(key.GetValue(null)));
+                }
+            }
+            catch { }
+            try
+            {
+                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\App Paths\codex.exe"))
+                {
+                    if (key != null && key.GetValue(null) != null) candidates.Add(Convert.ToString(key.GetValue(null)));
+                }
+            }
+            catch { }
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string candidate in candidates)
+            {
+                if (string.IsNullOrWhiteSpace(candidate)) continue;
+                string normalized;
+                try { normalized = Path.GetFullPath(Environment.ExpandEnvironmentVariables(candidate.Trim('"'))); }
+                catch { continue; }
+                if (seen.Add(normalized) && File.Exists(normalized)) return normalized;
+            }
+            return null;
+        }
+
+        private static void AddPathCandidates(List<string> candidates, string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
             foreach (string directory in path.Split(Path.PathSeparator))
             {
-                if (directory.Length == 0) continue;
-                candidates.Add(Path.Combine(directory.Trim('"'), "codex.exe"));
-                candidates.Add(Path.Combine(directory.Trim('"'), "codex.cmd"));
-                candidates.Add(Path.Combine(directory.Trim('"'), "codex.bat"));
+                string clean = directory.Trim().Trim('"');
+                if (clean.Length == 0) continue;
+                candidates.Add(Path.Combine(clean, "codex.exe"));
+                candidates.Add(Path.Combine(clean, "codex.cmd"));
+                candidates.Add(Path.Combine(clean, "codex.bat"));
             }
-            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            candidates.Add(Path.Combine(appData, "npm", "codex.cmd"));
-            foreach (string candidate in candidates) if (File.Exists(candidate)) return candidate;
-            return null;
+        }
+
+        private static void AddVersionedCandidates(List<string> candidates, string root, string fileName)
+        {
+            try
+            {
+                if (!Directory.Exists(root)) return;
+                var directories = new List<DirectoryInfo>(new DirectoryInfo(root).GetDirectories());
+                directories.Sort(delegate(DirectoryInfo left, DirectoryInfo right)
+                {
+                    return right.LastWriteTimeUtc.CompareTo(left.LastWriteTimeUtc);
+                });
+                foreach (DirectoryInfo directory in directories) candidates.Add(Path.Combine(directory.FullName, fileName));
+                candidates.Add(Path.Combine(root, fileName));
+            }
+            catch { }
         }
 
         private static void TryCredentialRefresh(string binary)
