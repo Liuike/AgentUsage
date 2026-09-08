@@ -10,8 +10,8 @@ using System.Windows.Forms;
 [assembly: AssemblyProduct("AgentUsage for Windows")]
 [assembly: AssemblyDescription("Codex usage in the Windows notification area")]
 [assembly: AssemblyCompany("AgentUsage")]
-[assembly: AssemblyVersion("0.5.1.0")]
-[assembly: AssemblyFileVersion("0.5.1.0")]
+[assembly: AssemblyVersion("0.5.2.0")]
+[assembly: AssemblyFileVersion("0.5.2.0")]
 [assembly: ComVisible(false)]
 
 namespace AgentUsage.Windows
@@ -24,6 +24,19 @@ namespace AgentUsage.Windows
         [STAThread]
         public static void Main(string[] args)
         {
+            if (Array.IndexOf(args, "--ui-preview") >= 0)
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                string previewSettings = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "preview-settings");
+                using (var preview = new AgentUsageForm(new SettingsStore(previewSettings), false))
+                {
+                    preview.SetPreviewData();
+                    preview.ToggleNearTaskbar();
+                    Application.Run(preview);
+                }
+                return;
+            }
             string previewArgument = Array.Find(args, delegate(string item) { return item.StartsWith("--render-previews=", StringComparison.OrdinalIgnoreCase); });
             if (previewArgument != null)
             {
@@ -37,6 +50,7 @@ namespace AgentUsage.Windows
                     preview.RenderPreview(Path.Combine(previewRoot, "day.png"), ActivityPeriod.Day, true);
                     preview.RenderPreview(Path.Combine(previewRoot, "week.png"), ActivityPeriod.Week, true);
                     preview.RenderPreview(Path.Combine(previewRoot, "cumulative.png"), ActivityPeriod.Cumulative, true);
+                    preview.RenderTrayPreviews(previewRoot);
                 }
                 return;
             }

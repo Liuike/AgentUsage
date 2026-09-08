@@ -16,6 +16,11 @@ namespace AgentUsage.Windows
                 Console.WriteLine(located);
                 return 0;
             }
+            if (Array.IndexOf(args, "--check-update") >= 0)
+            {
+                try { Console.WriteLine(ReleaseUpdateChecker.Check()); return 0; }
+                catch (Exception error) { Console.Error.WriteLine(error.Message); return 1; }
+            }
             try
             {
                 UsageSnapshot snapshot = new CodexClient().FetchAsync().Result;
@@ -39,7 +44,7 @@ namespace AgentUsage.Windows
             try
             {
                 const string rates = "{\"rateLimits\":{\"primary\":{\"usedPercent\":24,\"windowDurationMins\":300,\"resetsAt\":1788552000},\"secondary\":{\"usedPercent\":8,\"windowDurationMins\":10080,\"resetsAt\":1789000000},\"planType\":\"pro\",\"credits\":{\"balance\":\"12.50\",\"hasCredits\":true,\"unlimited\":false}},\"rateLimitResetCredits\":{\"availableCount\":3}}";
-                const string account = "{\"account\":{\"chatgpt\":{\"email\":\"test@example.com\",\"plan\":\"plus\"}}}";
+                const string account = "{\"account\":{\"type\":\"chatgpt\",\"email\":\"test@example.com\",\"planType\":\"plus\"},\"requiresOpenaiAuth\":true}";
                 const string activity = "{\"summary\":{\"lifetimeTokens\":1234567,\"peakDailyTokens\":45678,\"currentStreakDays\":4,\"longestStreakDays\":9},\"dailyUsageBuckets\":[{\"startDate\":\"2026-09-03\",\"tokens\":45678}]}";
                 var json = new JavaScriptSerializer();
                 var snapshot = new CodexClient().ParseSnapshot(
@@ -49,6 +54,7 @@ namespace AgentUsage.Windows
                 Expect(snapshot.FiveHour != null && snapshot.FiveHour.WindowMinutes == 300, "short window classification");
                 Expect(snapshot.SevenDay != null && snapshot.SevenDay.WindowMinutes == 10080, "long window classification");
                 Expect(snapshot.Plan == "plus", "account plan precedence");
+                Expect(snapshot.AccountEmail == "test@example.com", "current account response shape");
                 Expect(snapshot.Credits != null && snapshot.Credits.Balance == 12.5, "string credit balance");
                 Expect(snapshot.AvailableResets == 3, "reset credits");
                 Expect(snapshot.Activity != null && snapshot.Activity.DailyUsage.Count == 1, "activity buckets");

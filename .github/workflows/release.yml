@@ -17,7 +17,7 @@ jobs:
       - name: Validate tag version
         shell: pwsh
         run: |
-          $source = Get-Content -Raw .\Windows\AgentUsageForm.cs
+          $source = Get-Content -Raw .\Windows\Models.cs
           if ($source -notmatch 'public const string Version = "([^"]+)"') { throw 'Windows version not found.' }
           if ($Matches[1] -ne $env:GITHUB_REF_NAME.TrimStart('v')) { throw 'Tag does not match Windows version.' }
           if (-not (Test-Path -LiteralPath ".\Docs\releases\$env:GITHUB_REF_NAME.md")) { throw 'Release notes not found.' }

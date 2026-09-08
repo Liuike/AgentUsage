@@ -5,7 +5,6 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.IO;
-using System.Net;
 using System.Runtime.InteropServices;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
@@ -15,7 +14,7 @@ namespace AgentUsage.Windows
 {
     internal sealed class AgentUsageForm : Form
     {
-        public const string Version = "0.5.1";
+        public const string Version = BuildInfo.Version;
         private const int CanvasWidth = 360;
         private const int CollapsedHeight = 418;
         private const int ExpandedHeight = 638;
@@ -24,13 +23,13 @@ namespace AgentUsage.Windows
         private readonly SettingsStore settings;
         private readonly CodexClient client = new CodexClient();
         private readonly Timer refreshTimer = new Timer();
-        private readonly Timer animationTimer = new Timer();
         private readonly Timer updateTimer = new Timer();
         private UsageSnapshot snapshot;
         private string error;
         private bool refreshing;
         private bool optionsExpanded;
         private string latestVersion;
+        private bool updateCheckInProgress;
         private Point logicalMouse = new Point(-100, -100);
         private string hoverText;
         private NotifyIcon tray;
@@ -58,15 +57,13 @@ namespace AgentUsage.Windows
 
             refreshTimer.Tick += delegate { RefreshUsage(); };
             ConfigureRefreshTimer();
-            animationTimer.Interval = 700;
-            animationTimer.Tick += delegate { if (refreshing) Invalidate(); };
 
             MouseMove += HandleMouseMove;
             MouseWheel += HandleMouseWheel;
             MouseLeave += delegate { logicalMouse = new Point(-100, -100); hoverText = null; Invalidate(); };
             MouseUp += HandleMouseUp;
             Deactivate += delegate { Hide(); };
-            Shown += delegate { NativeMethods.RoundWindow(Handle); };
+            Shown += delegate { NativeMethods.ConfigureWindow(Handle); };
             KeyDown += delegate(object sender, KeyEventArgs e) { if (e.KeyCode == Keys.Escape) Hide(); };
 
             SystemEvents.UserPreferenceChanged += HandleUserPreferenceChanged;
@@ -129,12 +126,22 @@ namespace AgentUsage.Windows
             }
         }
 
+        public void RenderTrayPreviews(string directory)
+        {
+            foreach (MenuDisplayMode mode in Enum.GetValues(typeof(MenuDisplayMode)))
+            {
+                using (Icon icon = TrayIconRenderer.Render(snapshot, MenuMetric.FiveHour, mode, Theme.Current))
+                using (Bitmap bitmap = icon.ToBitmap())
+                    bitmap.Save(Path.Combine(directory, "tray-" + mode.ToString().ToLowerInvariant() + ".png"),
+                        System.Drawing.Imaging.ImageFormat.Png);
+            }
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
                 refreshTimer.Dispose();
-                animationTimer.Dispose();
                 updateTimer.Dispose();
                 SystemEvents.UserPreferenceChanged -= HandleUserPreferenceChanged;
             }
@@ -169,12 +176,17 @@ namespace AgentUsage.Windows
         {
             if (Visible) { Hide(); return; }
             UpdateScaleAndSize();
-            Screen screen = Screen.FromPoint(Cursor.Position);
-            Rectangle work = screen.WorkingArea;
-            Location = new Point(work.Right - Width - (int)(8 * scale), work.Bottom - Height - (int)(8 * scale));
+            PositionNearTaskbar();
             Show();
             Activate();
             BringToFront();
+        }
+
+        private void PositionNearTaskbar()
+        {
+            Screen screen = Screen.FromPoint(Cursor.Position);
+            Rectangle work = screen.WorkingArea;
+            Location = new Point(work.Right - Width - (int)(8 * scale), work.Bottom - Height - (int)(8 * scale));
         }
 
         public void RefreshUsage()
@@ -182,7 +194,6 @@ namespace AgentUsage.Windows
             if (refreshing) return;
             refreshing = true;
             error = null;
-            animationTimer.Start();
             Invalidate();
             client.FetchAsync().ContinueWith(task =>
             {
@@ -190,7 +201,6 @@ namespace AgentUsage.Windows
                 BeginInvoke((MethodInvoker)delegate
                 {
                     refreshing = false;
-                    animationTimer.Stop();
                     if (task.IsFaulted)
                     {
                         Exception issue = task.Exception == null ? null : task.Exception.GetBaseException();
@@ -441,7 +451,10 @@ namespace AgentUsage.Windows
 
             DrawText(g, "Open on Startup", theme.Text, 12, 545, 180, 20, 11, FontStyle.Bold, StringAlignment.Near);
             DrawSwitch(g, theme, new RectangleF(308, 541, 40, 22), SettingsStore.OpenOnStartup);
-            DrawText(g, latestVersion == null ? "Check for Updates" : "Update v" + latestVersion + " Available - Open",
+            string updateTitle = updateCheckInProgress
+                ? "Checking for Updates..."
+                : latestVersion == null ? "Check for Updates" : "Update v" + latestVersion + " Available - Open";
+            DrawText(g, updateTitle,
                 theme.Text, 12, 578, 336, 22, 11, FontStyle.Bold, StringAlignment.Near);
             DrawText(g, "Quit AgentUsage", theme.Text, 12, 609, 336, 22, 11, FontStyle.Bold, StringAlignment.Near);
         }
@@ -491,10 +504,10 @@ namespace AgentUsage.Windows
             using (var brush = new SolidBrush(Color.White)) g.FillEllipse(brush, x, bounds.Top + 2, diameter, diameter);
         }
 
-        private void DrawRefreshGlyph(Graphics g, Theme theme, RectangleF bounds, bool spinning)
+        private void DrawRefreshGlyph(Graphics g, Theme theme, RectangleF bounds, bool active)
         {
-            float phase = spinning ? (Environment.TickCount / 80) % 360 : 35;
-            using (var pen = new Pen(theme.Secondary, 1.7f))
+            const float phase = 35;
+            using (var pen = new Pen(active ? theme.Accent : theme.Secondary, 1.7f))
             {
                 pen.StartCap = LineCap.Round;
                 pen.EndCap = LineCap.Round;
@@ -506,6 +519,11 @@ namespace AgentUsage.Windows
                 PointF tip = new PointF(cx + radius * (float)Math.Cos(angle), cy + radius * (float)Math.Sin(angle));
                 g.DrawLine(pen, tip, new PointF(tip.X - 4, tip.Y - 1));
                 g.DrawLine(pen, tip, new PointF(tip.X - 1, tip.Y + 4));
+            }
+            if (active)
+            {
+                using (var brush = new SolidBrush(theme.Accent))
+                    g.FillEllipse(brush, bounds.X + bounds.Width / 2 - 1.5f, bounds.Y + bounds.Height / 2 - 1.5f, 3, 3);
             }
         }
 
@@ -558,8 +576,9 @@ namespace AgentUsage.Windows
                 optionsExpanded = !optionsExpanded;
                 settings.OptionsExpanded = optionsExpanded;
                 UpdateScaleAndSize();
-                ToggleNearTaskbar();
-                ToggleNearTaskbar();
+                PositionNearTaskbar();
+                NativeMethods.ConfigureWindow(Handle);
+                Invalidate();
             }
             else if (action.StartsWith("period:")) { settings.Period = (ActivityPeriod)int.Parse(action.Substring(7)); Invalidate(); }
             else if (action.StartsWith("metric:")) { settings.Metric = (MenuMetric)int.Parse(action.Substring(7)); UpdateTrayAppearance(); Invalidate(); }
@@ -575,7 +594,7 @@ namespace AgentUsage.Windows
             else if (action == "startup") { SettingsStore.OpenOnStartup = !SettingsStore.OpenOnStartup; Invalidate(); }
             else if (action == "updates")
             {
-                if (latestVersion != null) Process.Start("https://github.com/Rock-Z/AgentUsage/releases/latest");
+                if (latestVersion != null) Process.Start(ReleaseUpdateChecker.ReleasesPage);
                 else CheckForUpdates(true);
             }
             else if (action == "quit" && ExitRequested != null) ExitRequested(this, EventArgs.Empty);
@@ -598,29 +617,26 @@ namespace AgentUsage.Windows
 
         private void CheckForUpdates(bool interactive)
         {
-            var client = new WebClient();
-            client.Headers[HttpRequestHeader.UserAgent] = "AgentUsage-Windows";
-            client.DownloadStringCompleted += delegate(object sender, DownloadStringCompletedEventArgs e)
+            if (updateCheckInProgress) return;
+            updateCheckInProgress = true;
+            Invalidate();
+            ReleaseUpdateChecker.CheckAsync().ContinueWith(task =>
             {
-                client.Dispose();
-                if (e.Error != null)
+                if (IsDisposed) return;
+                BeginInvoke((MethodInvoker)delegate
                 {
-                    if (interactive && tray != null) tray.ShowBalloonTip(2500, "AgentUsage", "Could not check for updates.", ToolTipIcon.Warning);
-                    return;
-                }
-                try
-                {
-                    var serializer = new JavaScriptSerializer();
-                    var root = serializer.DeserializeObject(e.Result) as IDictionary<string, object>;
-                    string tag = JsonValue.String(root, "tag_name");
-                    if (!string.IsNullOrEmpty(tag)) tag = tag.TrimStart('v');
-                    if (IsNewer(tag, Version)) latestVersion = tag;
+                    updateCheckInProgress = false;
+                    if (task.IsFaulted)
+                    {
+                        Exception issue = task.Exception == null ? null : task.Exception.GetBaseException();
+                        string detail = issue == null ? "Unknown network error." : issue.Message;
+                        if (interactive && tray != null) tray.ShowBalloonTip(4000, "AgentUsage update check failed", detail, ToolTipIcon.Warning);
+                    }
+                    else if (IsNewer(task.Result, Version)) latestVersion = task.Result;
                     else if (interactive && tray != null) tray.ShowBalloonTip(2200, "AgentUsage", "You’re up to date.", ToolTipIcon.Info);
                     Invalidate();
-                }
-                catch { }
-            };
-            client.DownloadStringAsync(new Uri("https://api.github.com/repos/Rock-Z/AgentUsage/releases/latest"));
+                });
+            });
         }
 
         private void UpdateTrayAppearance()
@@ -780,24 +796,73 @@ namespace AgentUsage.Windows
                 string text = "--";
                 if (metric == MenuMetric.Billing) text = "$";
                 else if (outer != null) text = Math.Round(outer.RemainingPercent).ToString("0");
-                bool drawRing = mode != MenuDisplayMode.Percentage && metric != MenuMetric.Billing;
-                bool drawText = mode != MenuDisplayMode.Ring || metric == MenuMetric.Billing;
-                if (drawRing)
+
+                if (metric == MenuMetric.Billing || mode == MenuDisplayMode.Percentage)
+                {
+                    DrawPercentagePill(g, text, outer, theme, false);
+                }
+                else if (mode == MenuDisplayMode.RingAndPercentage)
+                {
+                    DrawPercentagePill(g, text, outer, theme, true);
+                }
+                else
                 {
                     DrawRing(g, new RectangleF(2.5f, 2.5f, 27, 27), outer == null ? 0 : outer.RemainingPercent, Color.White, 3.3f);
                     if (metric == MenuMetric.AllLimits) DrawRing(g, new RectangleF(8, 8, 16, 16), inner == null ? 0 : inner.RemainingPercent, Color.White, 2.3f);
                 }
-                if (drawText)
-                {
-                    float size = mode == MenuDisplayMode.RingAndPercentage ? 9 : 13;
-                    using (var font = new Font("Segoe UI", size, FontStyle.Bold, GraphicsUnit.Pixel))
-                    using (var brush = new SolidBrush(Color.White))
-                    using (var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
-                        g.DrawString(text, font, brush, new RectangleF(1, 1, 30, 30), format);
-                }
                 IntPtr handle = bitmap.GetHicon();
                 try { return (Icon)Icon.FromHandle(handle).Clone(); }
                 finally { NativeMethods.DestroyIcon(handle); }
+            }
+        }
+
+        private static void DrawPercentagePill(Graphics g, string text, RateWindow window, Theme theme, bool showProgressRing)
+        {
+            RectangleF pill = new RectangleF(.75f, 5.25f, 30.5f, 21.5f);
+            using (var background = new SolidBrush(showProgressRing ? Color.FromArgb(225, 43, 43, 47) : theme.Accent))
+                g.FillRoundedRectangle(background, pill, 6.5f);
+
+            if (showProgressRing)
+            {
+                using (var track = new Pen(Color.FromArgb(115, 255, 255, 255), 2f))
+                    g.DrawRoundedRectangle(track, new RectangleF(1.75f, 6.25f, 28.5f, 19.5f), 5.5f);
+                float remaining = window == null ? 0 : (float)Math.Max(0, Math.Min(100, window.RemainingPercent));
+                float progressWidth = 26.5f * remaining / 100f;
+                if (progressWidth > 0)
+                {
+                    using (var progress = new Pen(theme.Accent, 2.4f))
+                    {
+                        progress.StartCap = LineCap.Round;
+                        progress.EndCap = LineCap.Round;
+                        g.DrawLine(progress, 2.8f, 24.6f, 2.8f + progressWidth, 24.6f);
+                    }
+                }
+            }
+
+            using (var brush = new SolidBrush(Color.White))
+            using (var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+            {
+                if (text == "$" || text == "--")
+                {
+                    using (var font = new Font("Segoe UI", 13f, FontStyle.Bold, GraphicsUnit.Pixel))
+                        g.DrawString(text, font, brush, new RectangleF(1, 5, 30, 21), format);
+                    return;
+                }
+
+                bool threeDigits = text.Length >= 3;
+                float numberSize = threeDigits ? 10.5f : 13.5f;
+                RectangleF numberBounds = threeDigits
+                    ? new RectangleF(1, 5, 23, 21)
+                    : new RectangleF(2, 5, 21, 21);
+                RectangleF percentBounds = threeDigits
+                    ? new RectangleF(22, 5, 9, 21)
+                    : new RectangleF(21, 5, 10, 21);
+                using (var numberFont = new Font("Segoe UI", numberSize, FontStyle.Bold, GraphicsUnit.Pixel))
+                using (var percentFont = new Font("Segoe UI", 8f, FontStyle.Bold, GraphicsUnit.Pixel))
+                {
+                    g.DrawString(text, numberFont, brush, numberBounds, format);
+                    g.DrawString("%", percentFont, brush, percentBounds, format);
+                }
             }
         }
 
@@ -834,6 +899,21 @@ namespace AgentUsage.Windows
                 graphics.FillPath(brush, path);
             }
         }
+
+
+        public static void DrawRoundedRectangle(this Graphics graphics, Pen pen, RectangleF bounds, float radius)
+        {
+            float diameter = radius * 2;
+            using (var path = new GraphicsPath())
+            {
+                path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
+                path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
+                path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
+                path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+                path.CloseFigure();
+                graphics.DrawPath(pen, path);
+            }
+        }
     }
 
     internal static class NativeMethods
@@ -841,9 +921,15 @@ namespace AgentUsage.Windows
         [DllImport("user32.dll", SetLastError = true)] public static extern bool DestroyIcon(IntPtr handle);
         [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
-        public static void RoundWindow(IntPtr handle)
+        public static void ConfigureWindow(IntPtr handle)
         {
-            try { int preference = 2; DwmSetWindowAttribute(handle, 33, ref preference, sizeof(int)); }
+            try
+            {
+                int disableTransitions = 1;
+                DwmSetWindowAttribute(handle, 3, ref disableTransitions, sizeof(int));
+                int cornerPreference = 2;
+                DwmSetWindowAttribute(handle, 33, ref cornerPreference, sizeof(int));
+            }
             catch { }
         }
     }

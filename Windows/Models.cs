@@ -4,6 +4,11 @@ using System.Globalization;
 
 namespace AgentUsage.Windows
 {
+    internal static class BuildInfo
+    {
+        public const string Version = "0.5.2";
+    }
+
     internal sealed class RateWindow
     {
         public double UsedPercent;

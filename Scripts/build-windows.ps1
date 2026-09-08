@@ -50,6 +50,7 @@ $sources = @(
     (Join-Path $windowsRoot "Models.cs"),
     (Join-Path $windowsRoot "SettingsStore.cs"),
     (Join-Path $windowsRoot "CodexClient.cs"),
+    (Join-Path $windowsRoot "ReleaseUpdateChecker.cs"),
     (Join-Path $windowsRoot "AgentUsageForm.cs"),
     (Join-Path $windowsRoot "Program.cs")
 )
@@ -86,6 +87,7 @@ $probeArguments = @(
 ) + @(
     (Join-Path $windowsRoot "Models.cs"),
     (Join-Path $windowsRoot "CodexClient.cs"),
+    (Join-Path $windowsRoot "ReleaseUpdateChecker.cs"),
     (Join-Path $windowsRoot "ProbeProgram.cs")
 )
 & $compiler $probeArguments

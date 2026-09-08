@@ -28,7 +28,6 @@ namespace AgentUsage.Windows
             try { return FetchOnce(binary); }
             catch (TimeoutException)
             {
-                TryCredentialRefresh(binary);
                 return FetchOnce(binary);
             }
         }
@@ -43,9 +42,10 @@ namespace AgentUsage.Windows
                 }, 8000);
                 rpc.Notify("initialized", new Dictionary<string, object>());
 
-                IDictionary<string, object> rateResult = rpc.Request("account/rateLimits/read", null, 4000);
-                IDictionary<string, object> accountResult = TryRequest(rpc, "account/read", 4000);
-                IDictionary<string, object> activityResult = TryRequest(rpc, "account/usage/read", 8000);
+                IDictionary<string, object> accountResult = TryRequest(rpc, "account/read",
+                    new Dictionary<string, object> { { "refreshToken", false } }, 8000);
+                IDictionary<string, object> rateResult = rpc.Request("account/rateLimits/read", null, 15000);
+                IDictionary<string, object> activityResult = TryRequest(rpc, "account/usage/read", null, 15000);
 
                 var snapshot = ParseSnapshot(rateResult, accountResult, activityResult);
                 TryFetchResetExpirationDetails(snapshot);
@@ -53,9 +53,10 @@ namespace AgentUsage.Windows
             }
         }
 
-        private static IDictionary<string, object> TryRequest(RpcSession rpc, string method, int timeout)
+        private static IDictionary<string, object> TryRequest(RpcSession rpc, string method,
+            IDictionary<string, object> parameters, int timeout)
         {
-            try { return rpc.Request(method, null, timeout); }
+            try { return rpc.Request(method, parameters, timeout); }
             catch { return null; }
         }
 
@@ -118,9 +119,9 @@ namespace AgentUsage.Windows
             if (root == null) return;
             IDictionary<string, object> account = JsonValue.Dict(root, "account");
             IDictionary<string, object> chatgpt = account == null ? null : JsonValue.Dict(account, "chatgpt");
-            IDictionary<string, object> source = chatgpt ?? root;
+            IDictionary<string, object> source = chatgpt ?? account ?? root;
             snapshot.AccountEmail = JsonValue.String(source, "email");
-            string plan = JsonValue.String(source, "plan");
+            string plan = JsonValue.String(source, "planType") ?? JsonValue.String(source, "plan");
             if (!string.IsNullOrEmpty(plan)) snapshot.Plan = plan;
         }
 
@@ -274,16 +275,6 @@ namespace AgentUsage.Windows
             catch { }
         }
 
-        private static void TryCredentialRefresh(string binary)
-        {
-            try
-            {
-                var start = RpcSession.StartInfo(binary, "login status");
-                using (Process process = Process.Start(start)) process.WaitForExit(5000);
-            }
-            catch { }
-        }
-
         private sealed class RpcSession : IDisposable
         {
             private readonly string binary;
@@ -332,14 +323,14 @@ namespace AgentUsage.Windows
                 var payload = new Dictionary<string, object>();
                 payload["id"] = id;
                 payload["method"] = method;
-                payload["params"] = parameters ?? new Dictionary<string, object>();
+                payload["params"] = parameters;
                 Send(payload);
                 Stopwatch clock = Stopwatch.StartNew();
                 while (clock.ElapsedMilliseconds < timeoutMilliseconds)
                 {
                     Task<string> read = process.StandardOutput.ReadLineAsync();
                     int remaining = Math.Max(1, timeoutMilliseconds - (int)clock.ElapsedMilliseconds);
-                    if (!read.Wait(remaining)) throw new TimeoutException("Timed out: " + method);
+                    if (!read.Wait(remaining)) throw Timeout(method);
                     string line = read.Result;
                     if (line == null) throw new InvalidOperationException("Codex app-server closed unexpectedly.");
                     IDictionary<string, object> message;
@@ -350,7 +341,13 @@ namespace AgentUsage.Windows
                     if (error != null) throw new InvalidOperationException(JsonValue.String(error, "message") ?? "Codex app-server error.");
                     return JsonValue.Dict(message, "result") ?? new Dictionary<string, object>();
                 }
-                throw new TimeoutException("Timed out: " + method);
+                throw Timeout(method);
+            }
+
+            private static TimeoutException Timeout(string method)
+            {
+                return new TimeoutException("Codex took too long to answer " + method
+                    + ". Try Refresh; if this persists, restart Codex and AgentUsage.");
             }
 
             public void Notify(string method, IDictionary<string, object> parameters)
