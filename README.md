@@ -1,6 +1,6 @@
 # AgentUsage for Windows
 
-AgentUsage is a native Windows notification-area app for monitoring Codex usage without opening a browser. It preserves the compact visual language of the original macOS app while focusing this repository and its releases on Windows.
+AgentUsage is a native Windows taskbar tray app for monitoring Codex usage. 
 
 ![AgentUsage for Windows](Assets/Previews/agent-usage-windows.png)
 
@@ -29,8 +29,6 @@ AgentUsage finds Codex through `PATH`, Codex Desktop's versioned installation di
 - In-app checks for new Windows releases
 - No analytics or telemetry
 
-Claude Code integration is intentionally not included in the Windows edition.
-
 ## Build from source
 
 From PowerShell at the repository root:
@@ -45,8 +43,6 @@ Create a distributable ZIP and checksum with:
 ```powershell
 .\Scripts\package-windows.ps1
 ```
-
-No NuGet packages, SDK downloads, or JavaScript runtime are required. See [Windows/README.md](Windows/README.md) for detailed installation and development notes.
 
 ## Repository branches
 
