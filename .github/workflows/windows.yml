@@ -1,4 +1,4 @@
-name: Windows
+name: Windows CI
 
 on:
   push:
@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build native Windows app
         shell: pwsh
         run: .\Scripts\package-windows.ps1

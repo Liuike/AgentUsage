@@ -1,56 +1,60 @@
-# AgentUsage
+# AgentUsage for Windows
 
-A local-only menu-bar/tray app for viewing coding-agent usage and activity.
-
-![AgentUsage Day, Week, and Cumulative usage views](Assets/Previews/agent-usage-real-app-triptych.png)
-
-AgentUsage talks directly to the Codex and Anthropic services using credentials already stored by their local clients.
-In the case of Codex, it uses the locally authenticated Codex Appserver to fetch usage data. In the case of Claude, it uses the stored Claude Code credential (as file or in keychain) to fetch usage data from the Anthropic API. AgentUsage includes no analytics or telemetry and does not send requests to any third-party servers.
-
-Licensed under the [MIT License](LICENSE).
-
-## macOS
-
-Reading Claude usage requires a one-time Keychain authorization. macOS asks whether `AgentUsageClaudeHelper` may access the `Claude Code-credentials` item in your login Keychain; approval lets it read Claude Code's existing OAuth token and request usage data directly from Anthropic without returning the token to the main AgentUsage app.
-
-The recommended installation path is Homebrew:
-
-```sh
-brew install --cask Rock-Z/tap/agentusage
-```
-
-Alternatively, use the one-click release installer:
-
-```sh
-curl -fsSL https://github.com/Rock-Z/AgentUsage/releases/latest/download/install.sh | bash
-```
-
-Alternatively, build and install from source:
-
-```sh
-./Scripts/build-app.sh --install
-```
-
-The DMG on [Releases](https://github.com/Rock-Z/AgentUsage/releases) remains available for manual installation. The first launch may require using **Open Anyway** in System Settings → Privacy & Security.
-
-## See also
-
-Below are some other alternatives for the same purpose:
-
-- For more providers and a more mature feature set, see [CodexBar](https://github.com/steipete/CodexBar).
-- For local usage accounting from coding-agent logs, see [ccusage](https://github.com/ryoppippi/ccusage).
-
-AgentUsage aims to be a minimal, constrained, and aesthetically pleasing to use monitoring utility.
-
-## Windows
-
-The native Windows notification-area edition preserves Codex limits, account details, credits and resets, activity charts, refresh controls, tray metrics, startup behavior, and the original compact visual language. Claude Code integration is intentionally omitted from the Windows edition.
+AgentUsage is a native Windows notification-area app for monitoring Codex usage without opening a browser. It preserves the compact visual language of the original macOS app while focusing this repository and its releases on Windows.
 
 ![AgentUsage for Windows](Assets/Previews/agent-usage-windows.png)
+
+## Download
+
+Download the latest package from [GitHub Releases](https://github.com/Liuike/AgentUsage/releases/latest), extract it, and run `Install-AgentUsage.ps1` from PowerShell. The installer places the app in `%LOCALAPPDATA%\Programs\AgentUsage`, creates a Start Menu shortcut, and launches the tray app.
+
+You can also run `AgentUsage.exe` directly from the extracted folder for portable use.
+
+## Requirements
+
+- Windows 10 or Windows 11
+- .NET Framework 4.7.2 or newer
+- Codex CLI or Codex Desktop installed and signed in
+
+AgentUsage finds Codex through `PATH`, Codex Desktop's versioned installation directory, npm/NVM locations, Windows App Paths, and other common local installations. Set `AGENTUSAGE_CODEX_PATH` to the full path of `codex.exe` or `codex.cmd` for a custom installation.
+
+## Features
+
+- Five-hour and seven-day Codex usage limits
+- Account plan, credits, earned resets, and reset times
+- Day, week, and cumulative activity charts
+- Ring, percentage, and combined tray display modes
+- Configurable refresh intervals and Windows startup integration
+- Windows light and dark theme support
+- In-app checks for new Windows releases
+- No analytics or telemetry
+
+Claude Code integration is intentionally not included in the Windows edition.
+
+## Build from source
+
+From PowerShell at the repository root:
 
 ```powershell
 .\Scripts\build-windows.ps1
 .\Windows\bin\AgentUsage.exe --show
 ```
 
-See [Windows/README.md](Windows/README.md) for requirements and installation instructions.
+Create a distributable ZIP and checksum with:
+
+```powershell
+.\Scripts\package-windows.ps1
+```
+
+No NuGet packages, SDK downloads, or JavaScript runtime are required. See [Windows/README.md](Windows/README.md) for detailed installation and development notes.
+
+## Repository branches
+
+- `master` is the default Windows branch and the source for Windows CI/CD and releases.
+- `macos` preserves the original macOS application and its history. macOS builds are not published by the default branch pipeline.
+
+## Attribution
+
+This Windows edition is based on [Rock-Z/AgentUsage](https://github.com/Rock-Z/AgentUsage). The original project established the product concept, design language, macOS implementation, and initial Codex usage integration.
+
+Licensed under the [MIT License](LICENSE).
